@@ -15,12 +15,23 @@
 ## Quick Start
 
 ```bash
-# 开发模式
-cd web && npm install && npm run dev
+# 安装依赖
+npm install
 
-# 生产部署
+# 开发模式：后端 http://localhost:3001，前端 http://localhost:5173
+npm run dev
+
+# 生产构建
+npm run build
+
+# Docker 部署
 docker-compose up -d
 ```
+
+默认账号通过环境变量配置，未设置时会初始化：
+
+- 管理员：`admin` / `admin123`
+- 家庭用户：`family` / `family123`
 
 ## 部署环境
 
@@ -30,16 +41,15 @@ docker-compose up -d
 
 ## 技术选型
 
-> 具体技术栈由 Codex 开发时确定，以下为建议方案：
-
 ### 前端
-- React / Vue 3 + TypeScript
-- Tailwind CSS 或 Ant Design
-- 响应式设计（手机 + 电脑）
+- React + Vite + TypeScript
+- Tailwind CSS
+- 响应式设计（手机优先）
 
 ### 后端
-- Python FastAPI 或 Node.js Express
-- SQLite（轻量级，2G内存足够）
+- Node.js + Hono
+- SQLite + better-sqlite3
+- JWT 登录认证
 
 ### 部署
 - Docker + Docker Compose
@@ -57,14 +67,12 @@ docker-compose up -d
 ```
 shopping-list-platform/
 ├── README.md          # 项目说明
-├── docs/              # 需求文档、设计文档
-│   ├── REQUIREMENTS.md  # 详细需求（给 Codex 的 prompt）
-│   └── DESIGN.md        # 设计文档
-├── web/               # 前端代码
-├── scripts/           # 工具脚本
-├── data/              # 本地开发数据
-├── schema/            # 数据库 Schema
-├── templates/         # 页面模板
+├── docs/              # 需求文档
+│   └── REQUIREMENTS.md  # 详细需求（给 Codex 的 prompt）
+├── web/               # Vite React 前端
+├── server/            # Hono REST API
+├── schema/            # SQLite schema
+├── data/              # SQLite 数据目录
 ├── docker-compose.yml # Docker 部署配置
 └── HANDOFF.md         # Codex 交接文档
 ```
@@ -72,7 +80,7 @@ shopping-list-platform/
 ## 当前状态
 
 - [x] 需求梳理
-- [ ] Codex 开发
+- [x] Phase 1 MVP：登录、物品 CRUD、分类管理、标记购买、Docker 部署
 - [ ] 部署上线
 
 ---

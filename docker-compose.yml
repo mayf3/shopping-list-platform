@@ -1,0 +1,20 @@
+services:
+  shopping-list:
+    build: .
+    container_name: shopping-list-platform
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      NODE_OPTIONS: --max-old-space-size=384
+      DATABASE_PATH: /data/shopping-list.db
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-secret}
+      DEFAULT_MONTHLY_BUDGET: ${DEFAULT_MONTHLY_BUDGET:-3000}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      FAMILY_USERNAME: ${FAMILY_USERNAME:-family}
+      FAMILY_PASSWORD: ${FAMILY_PASSWORD:-family123}
+    volumes:
+      - ./data:/data
