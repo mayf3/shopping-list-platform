@@ -12,6 +12,14 @@ export type Session = {
 export type Priority = 'high' | 'medium' | 'low';
 export type ItemStatus = 'pending' | 'purchased' | 'cancelled';
 
+export type ItemFilters = {
+  search: string;
+  category_id: string;
+  status: ItemStatus | 'all';
+  priority: Priority | 'all';
+  store: string;
+};
+
 export type Category = {
   id: number;
   name: string;
@@ -67,4 +75,3 @@ export type ItemPayload = {
   note?: string | null;
   url?: string | null;
 };
-

@@ -22,6 +22,7 @@ type AppEnv = {
 };
 
 type ItemStatus = 'pending' | 'purchased' | 'cancelled';
+type ItemPriority = 'high' | 'medium' | 'low';
 
 export const app = new Hono<AppEnv>();
 
@@ -75,6 +76,10 @@ const categorySchema = z.object({
 const purchaseSchema = z.object({
   actual_price: nullableMoney,
   store: nullableString
+});
+
+const batchIdsSchema = z.object({
+  ids: z.array(z.coerce.number().int().positive()).min(1).max(500)
 });
 
 const loginSchema = z.object({
@@ -271,20 +276,127 @@ app.delete('/api/categories/:id', (c) => {
 
 app.get('/api/items', (c) => {
   const status = c.req.query('status') as ItemStatus | 'all' | undefined;
+  const priority = c.req.query('priority') as ItemPriority | 'all' | undefined;
+  const categoryId = Number(c.req.query('category_id'));
+  const search = c.req.query('search')?.trim();
+  const store = c.req.query('store')?.trim();
   const validStatus = status && ['pending', 'purchased', 'cancelled'].includes(status) ? status : undefined;
+  const validPriority = priority && ['high', 'medium', 'low'].includes(priority) ? priority : undefined;
 
-  const rows =
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (status !== 'all') {
+    where.push('items.status = ?');
+    params.push(validStatus ?? 'pending');
+  }
+
+  if (search) {
+    where.push('(items.name LIKE ? OR items.note LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (Number.isInteger(categoryId) && categoryId > 0) {
+    where.push('(items.category_id = ? OR categories.parent_id = ?)');
+    params.push(categoryId, categoryId);
+  }
+
+  if (validPriority) {
+    where.push('items.priority = ?');
+    params.push(validPriority);
+  }
+
+  if (store) {
+    where.push('items.store = ?');
+    params.push(store);
+  }
+
+  const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const orderClause =
     status === 'all'
-      ? getDb().prepare(`${itemSelect} ORDER BY items.status, items.created_at DESC`).all()
-      : getDb()
-          .prepare(
-            `${itemSelect} WHERE items.status = ? ORDER BY
-              CASE items.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-              items.created_at DESC`
-          )
-          .all(validStatus ?? 'pending');
+      ? `ORDER BY
+          items.status,
+          CASE items.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+          items.created_at DESC`
+      : `ORDER BY
+          CASE items.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+          items.created_at DESC`;
+
+  const rows = getDb().prepare(`${itemSelect} ${whereClause} ${orderClause}`).all(...params);
 
   return c.json({ items: rows.map((row) => toItem(row as Record<string, unknown>)) });
+});
+
+app.post('/api/items/batch-purchase', async (c) => {
+  const parsed = await parseJson(batchIdsSchema, c);
+  if (!parsed.ok) return parsed.response;
+
+  const ids = Array.from(new Set(parsed.data.ids));
+  const placeholders = ids.map(() => '?').join(',');
+  const db = getDb();
+  const items = db
+    .prepare(
+      `
+        SELECT id, name, status, category_id, estimated_price, actual_price, store
+        FROM items
+        WHERE id IN (${placeholders})
+      `
+    )
+    .all(...ids) as {
+    id: number;
+    name: string;
+    status: ItemStatus;
+    category_id: number | null;
+    estimated_price: number | null;
+    actual_price: number | null;
+    store: string | null;
+  }[];
+
+  const purchase = db.transaction(() => {
+    let updated = 0;
+    const updateItem = db.prepare(
+      `
+        UPDATE items SET
+          status = 'purchased',
+          actual_price = ?,
+          store = ?,
+          purchased_at = datetime('now'),
+          updated_at = datetime('now')
+        WHERE id = ?
+      `
+    );
+    const insertHistory = db.prepare(
+      `
+        INSERT INTO purchase_history (item_id, item_name, category_id, price, store)
+        VALUES (?, ?, ?, ?, ?)
+      `
+    );
+
+    for (const item of items) {
+      if (item.status === 'purchased') continue;
+
+      const price = item.actual_price ?? item.estimated_price ?? 0;
+      const store = item.store ?? null;
+      updateItem.run(price, store, item.id);
+      insertHistory.run(item.id, item.name, item.category_id, price, store);
+      updated += 1;
+    }
+
+    return updated;
+  });
+
+  return c.json({ ok: true, updated: purchase() });
+});
+
+app.post('/api/items/batch-delete', async (c) => {
+  const parsed = await parseJson(batchIdsSchema, c);
+  if (!parsed.ok) return parsed.response;
+
+  const ids = Array.from(new Set(parsed.data.ids));
+  const placeholders = ids.map(() => '?').join(',');
+  const result = getDb().prepare(`DELETE FROM items WHERE id IN (${placeholders})`).run(...ids);
+
+  return c.json({ ok: true, deleted: result.changes });
 });
 
 app.post('/api/items', async (c) => {

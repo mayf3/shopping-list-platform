@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { User, Category, Item, Summary } from './types';
+import type { User, Category, Item, ItemFilters, Summary } from './types';
 import { api, ApiError } from './api';
 import { LoginPage } from './LoginPage';
 import { NavBar } from './NavBar';
@@ -13,12 +13,22 @@ import { StatsCharts } from './StatsCharts';
 
 export type Page = 'list' | 'history' | 'dashboard' | 'settings';
 
+const DEFAULT_ITEM_FILTERS: ItemFilters = {
+  search: '',
+  category_id: '',
+  status: 'pending',
+  priority: 'all',
+  store: ''
+};
+
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
   const [user, setUser] = useState<User | null>(null);
   const [page, setPage] = useState<Page>('list');
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [storeOptions, setStoreOptions] = useState<string[]>([]);
+  const [itemFilters, setItemFilters] = useState<ItemFilters>(() => ({ ...DEFAULT_ITEM_FILTERS }));
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -56,13 +66,19 @@ export default function App() {
     if (!token) return;
     setLoading(true);
     try {
-      const [catRes, itemRes, sumRes] = await Promise.all([
+      const [catRes, itemRes, sumRes, storeRes] = await Promise.all([
         api.categories(token),
-        api.items(token, 'pending'),
-        api.summary(token)
+        api.items(token, itemFilters),
+        api.summary(token),
+        api.items(token, 'all')
       ]);
+      const stores = storeRes.items
+        .map((item) => item.store?.trim())
+        .filter((store): store is string => Boolean(store));
+
       setCategories(catRes.categories);
       setItems(itemRes.items);
+      setStoreOptions(Array.from(new Set(stores)).sort((a, b) => a.localeCompare(b, 'zh-CN')));
       setSummary(sumRes);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -72,7 +88,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [itemFilters, token]);
 
   useEffect(() => {
     loadData();
@@ -132,6 +148,18 @@ export default function App() {
     await loadData();
   };
 
+  const handleBatchPurchaseItems = async (ids: number[]) => {
+    if (!token) return;
+    await api.batchPurchaseItems(token, ids);
+    await loadData();
+  };
+
+  const handleBatchDeleteItems = async (ids: number[]) => {
+    if (!token) return;
+    await api.batchDeleteItems(token, ids);
+    await loadData();
+  };
+
   const handleRefreshCategories = async () => {
     if (!token) return;
     const res = await api.categories(token);
@@ -157,13 +185,19 @@ export default function App() {
           <ItemList
             items={items}
             categories={categories}
+            filters={itemFilters}
+            storeOptions={storeOptions}
             loading={loading}
+            onFiltersChange={(patch) => setItemFilters((current) => ({ ...current, ...patch }))}
+            onClearFilters={() => setItemFilters({ ...DEFAULT_ITEM_FILTERS })}
             onEdit={(item) => {
               setEditingItem(item);
               setShowForm(true);
             }}
             onDelete={handleDeleteItem}
             onPurchase={handlePurchaseItem}
+            onBatchPurchase={handleBatchPurchaseItems}
+            onBatchDelete={handleBatchDeleteItems}
           />
         )}
         {page === 'dashboard' && (
