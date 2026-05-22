@@ -1,5 +1,7 @@
 # Shopping List Platform（购物清单管理平台）
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 一个基于 Web 的购物清单管理平台，用于管理日常购物需求、预算跟踪、购买记录，支持多用户使用。
 
 ## 背景
